@@ -1,103 +1,44 @@
 import os
-import random
 
+from captcha.image import ImageCaptcha
+
+import random
 from PIL import Image, ImageOps
+import numpy as np
 
 import torch
-import torch.nn as nn
+from torchvision import transforms
 from torch.utils.data import Dataset, DataLoader, Sampler
 
 
-class OCRDataset(Dataset):
-    def __init__(self, df, content_img_dir, chars, char_per_img,
-                 img_transform=None):
-        self._char_per_img = char_per_img
+img_trans = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=(0.229, 0.224, 0.225)),
+])
 
-        df = df.copy()
-        #         df = pd.read_csv(content_csv_file, encoding='utf-8')
-        df['str_len'] = df.content.str.len()
-        df = df[df.str_len == char_per_img].drop('str_len', axis=1)
 
-        #         assert len(df) == len(os.listdir(content_img_dir)), 'Corrupted Data!'
+class CaptchaDataset(Dataset):
+    def __init__(self, size, n_chars=4, chars=None):
+        self.gen = ImageCaptcha()
+        self.size = size
 
-        self._img_dir = content_img_dir
+        self.n_chars = n_chars
 
-        keys = {}
-
-        for i, c in enumerate(chars):
-            keys[c] = i + 1  # 0 is for 'space'
-
-        self._label_tensors = []
-        self._fns = []
-        for row in df.itertuples():
-            t = torch.zeros(len(row.content, ), dtype=torch.int32)
-
-            flag = True
-            for i, c in enumerate(row.content):
-                if c in chars:
-                    t[i] = keys[c] + 1  # 0 reserved for SOS
-                else:
-                    t[i] = len(chars) + 1
-
-            self._label_tensors.append(t)
-            self._fns.append(row.filename)
-
-        self._img_transform = img_transform
+        if chars is None:
+            self.chars = list('1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')
+        else:
+            self.chars = list(chars)
 
     def __len__(self):
-        return len(self._fns)
+        return self.size
 
-    def __getitem__(self, idx):
-        fn = self._fns[idx]
-        img = Image.open(os.path.join(self._img_dir, fn + '.jpg'))
+    def __getitem__(self, item):
+        content = torch.randint(0, len(self.chars), (self.n_chars, ))
 
-        if img.size[1] > img.size[0] * 2:
-            img = img.rotate(90, expand=True)
-        elif img.size[1] > img.size[0]:
-            img = img.resize((img.size[0], img.size[0]))
+        s = ''.join([self.chars[i] for i in content.numpy()])
 
-        img = ImageOps.autocontrast(img)
+        d = self.gen.generate(s)
+        d = Image.open(d)
 
-        img = img.resize((img.height * self._char_per_img, img.height))
-        #         a = np.array(img)
-        #         a = cv2.medianBlur(a, 5)
-        #         img = Image.fromarray(a)
+        return img_trans(d), content
 
-        if self._img_transform is not None:
-            img = self._img_transform(img)
-
-        return img, self._label_tensors[idx]
-
-
-class OnePicSampler(Sampler):
-    def __init__(self, data_len, batch_size, df, chars):
-        charset = set(chars)
-
-        char_imgs = {}
-
-        for i, row in enumerate(df.itertuples()):
-            for c in row.content:
-                if c in charset:
-                    if c not in char_imgs:
-                        char_imgs[c] = []
-
-                    char_imgs[c].append(i)
-
-        self._chars = chars
-        self._char_imgs = char_imgs
-        self._avail_chars = list(char_imgs.keys())
-        self._n_data = data_len
-        self._batch_size = batch_size
-
-    def __len__(self):
-        return self._n_data
-
-    def __iter__(self):
-        index = torch.zeros((self._n_data * self._batch_size,), dtype=torch.long)
-        for i in range(self._n_data * self._batch_size):
-            c = random.choice(self._avail_chars)
-            idx = random.choice(self._char_imgs[c])
-
-            index[i] = idx
-
-        return iter(index)

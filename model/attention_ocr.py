@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .inception import *
+from torchvision.models.inception import BasicConv2d, InceptionA
 
 
 class MyIncept(nn.Module):
@@ -146,7 +146,7 @@ class OneHot(nn.Module):
         super(OneHot, self).__init__()
         emb = nn.Embedding(depth, depth)
         emb.weight.data = torch.eye(depth)
-        emb.requires_grad = False
+        emb.weight.requires_grad = False
         self.emb = emb
 
     def forward(self, input_):
