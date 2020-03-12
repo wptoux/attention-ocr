@@ -1,4 +1,6 @@
 torch
 torchvision
+ignite
 Pillow
 captcha
+pycrypto
