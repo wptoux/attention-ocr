@@ -1,4 +1,6 @@
-pytorch
+torch
 torchvision
-pytorch-ignite
+ignite
 Pillow
+captcha
+pycrypto
